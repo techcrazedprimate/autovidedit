@@ -10,7 +10,7 @@ import time
 
 from moviepy.editor import *
 
-MOVIEPATH = "/Users/tbroch/Movies/personal"
+MOVIEPATH = os.path.join(os.environ['HOME'], "Movies", "personal")
 
 # TODOS
 # 
@@ -52,6 +52,10 @@ def csvdate2filedate(date):
     return rv
 
 def find_file(division, opponent, date):
+    """Find source file for hightlights.
+
+    TODO: this is horrible ... fix it.
+    """
     if division.lower().startswith('j'):
         path = "%s/2015_gbjpw/%s_gbjpw_vs_%s.mp4" % \
             (MOVIEPATH,
@@ -68,19 +72,24 @@ def find_file(division, opponent, date):
         return None
     return path
 
-# 0 - division
-# 1 - opponent
-# 2 - date
-# 3 - youtube
-# 4 - yards
-# 5 - description
-# 6 - player number
-# 7 - Offense or Defense
-# 8 - start time hr:min:sec
-# 9 - duration
-# 10 - url link1
-# 11 - url link2
 def parse_csv(infile, player_num):
+    """Parse csv.
+
+    fields:
+    -------
+    0 - division
+    1 - opponent
+    2 - date
+    3 - youtube
+    4 - yards
+    5 - description
+    6 - player number
+    7 - Offense or Defense
+    8 - start time hr:min:sec
+    9 - duration
+    10 - url link1
+    11 - url link2
+    """
     rv_list = []
     with open(infile, 'r') as fd:
         rd_list = csv.reader(fd, delimiter=',')
@@ -129,6 +138,28 @@ def parse_csv(infile, player_num):
 
     return rv_list
 
+def create_highlight(raw_video, txt, dur_secs):
+    text_dur_secs = 3 if (dur_secs - 3) >= 0 else dur_secs
+    video = (raw_video.fx( vfx.freeze, freeze_duration=1.5 )
+             .fx( vfx.fadein, 0.75)
+            )
+    txt_clip1 = (TextClip(txt, fontsize=54, color='white', kerning=4)
+                .set_position('bottom')
+                .set_duration(text_dur_secs))
+    txt_clip2 = (TextClip(txt, fontsize=60, color='black')
+                .set_position('bottom')
+                .set_duration(text_dur_secs))
+
+
+    clips = [video, txt_clip2, txt_clip1]
+    result1 = CompositeVideoClip(clips)
+    final_freeze = raw_video.to_ImageClip(dur_secs)
+    result2 = (CompositeVideoClip([final_freeze])
+               .add_mask()
+               .set_duration(1.5))
+    result2 = (result2.fx( vfx.fadeout, 0.75))
+    return concatenate_videoclips([result1, result2])
+
 def main():
     args = parse_args()
     logging.basicConfig(level=logging.DEBUG)
@@ -155,28 +186,13 @@ def main():
         start_secs = time2secs(start)
         dur_secs = int(dur)
         #dur_secs = 5
-        text_dur_secs = 3 if (dur_secs - 3) >= 0 else dur_secs
         end_secs = start_secs + dur_secs
-
         logging.debug('start:%d end:%d', start_secs, end_secs)
-        video = VideoFileClip(movie).subclip(start_secs, end_secs)
-        video = (video.fx( vfx.freeze, freeze_duration=1 )
-                      #.fx( vfx.freeze, t=dur_secs, freeze_duration=1)
-                 )
-        video = (video.fx( vfx.fadeout, 0.75)
-                 )
-        txt_clip1 = (TextClip(txt, fontsize=54, color='white', kerning=4)
-                    .set_position('bottom')
-                    .set_duration(text_dur_secs))
-        txt_clip2 = (TextClip(txt, fontsize=60, color='black')
-                    .set_position('bottom')
-                    .set_duration(text_dur_secs))
-        clips = [video, txt_clip2, txt_clip1]
 
-        
         fname = "%s_%d.mp4" % (fname_root, time_idx)
         if not os.path.exists(fname):
-            result = CompositeVideoClip(clips)
+            raw_video = VideoFileClip(movie).subclip(start_secs, end_secs)
+            result = create_highlight(raw_video, txt, dur_secs)
             result.write_videofile(fname,fps=25, audio=False)
         file_dict[time_idx] = 'file %s' % fname
         #break
